@@ -2,6 +2,7 @@ import pyglet
 import multiprocessing as mp
 import random
 import networkx as nx
+from navigation_server import *
 
 grid_size = 500
 number_of_streets = 10 
@@ -77,6 +78,8 @@ class Car():
 
 	def draw(self):
 		pyglet.graphics.draw(1, pyglet.gl.GL_POINTS, ('v2i', self.pos))
+
+server = NavigationServer()
 
 window = pyglet.window.Window(width = grid_size, height = grid_size)
 window.clear()
