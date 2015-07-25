@@ -164,10 +164,9 @@ car = Car(1, road_map, actual_car_locations, start, (1,0))
 
 cars = [car]
 
-server = NavigationServer(actual_car_locations, 8000).start()
+server = NavigationServer(actual_car_locations, road_graph, 8000).start()
 
 while True:
 	time.sleep(.5)
-	for car in cars:
-		print("dirving cars")
+	for car in cars:		
 		car.drive()
