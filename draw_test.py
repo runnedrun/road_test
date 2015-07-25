@@ -1,7 +1,7 @@
-import pyglet
 import multiprocessing as mp
 import random
 import networkx as nx
+import time
 from navigation_server import *
 
 grid_size = 500
@@ -71,41 +71,103 @@ for y in horiz_list:
 				distance = next_x - x
 				road_graph.add_edge((x, y), (vert_list[i + 1], y), weight = distance, distance = distance)
 
+class Roadmap: 
+	def __init__(self, horizontal_roads, vertical_roads, road_graph): 
+		self.graph = road_graph
+		self.horiz_roads = horizontal_roads
+		self.vert_roads = vertical_roads
+
+	def get_possible_next_locations(self, pos):
+		x = pos[0]
+		y = pos[1]
+
+		on_vertical_road = False
+		on_horizontal_road = False
+
+		for road in self.vert_roads:
+			on_vertical_road = x == road 
+
+		for road in self.horiz_roads:
+			on_horizontal_road = y == road
+
+
+		posssible_locations = []
+
+		if on_vertical_road and on_horizontal_road:
+			# we are at an intersection			
+			posssible_locations = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+		elif on_vertical_road:					
+			posssible_locations = [(x, y - 1), (x, y + 1)]
+		else:						
+			posssible_locations = [(x - 1, y), (x + 1, y)]
+
+		# don't return a next location that is off the map
+		return [loc for loc in posssible_locations if loc[0] >= 0 and loc[1] >= 0] 
+
 class Car():
-	def __init__(self, name, starting_pos): 
-		self.name = name
+	def __init__(self, car_id, roadmap, actual_car_locations, starting_pos, starting_velocity): 
+		self.navigation_client = NavigationClient(1060)
 		self.pos = starting_pos
+		self.velocity = starting_velocity
+		self.roadmap = roadmap
+		self.id = car_id
+		self.actual_car_locations = actual_car_locations
 
-	def draw(self):
-		pyglet.graphics.draw(1, pyglet.gl.GL_POINTS, ('v2i', self.pos))
+	def drive(self):
+		possible_next_positions = self.roadmap.get_possible_next_locations(self.pos)
 
-server = NavigationServer()
+		# calcuate the next valid position for the car to go
+		next_position = False
+		for move in possible_next_positions:
+			x_move = move[0] - self.pos[0] 
+			y_move = move[1] - self.pos[1]
 
-window = pyglet.window.Window(width = grid_size, height = grid_size)
-window.clear()
+			# if the next position is in the direction the car is going, move there
+			if self.velocity[0] and x_move / self.velocity[0] >= 0:
+				next_position = move
+			elif self.velocity[1] and  y_move / self.velocity[1] >= 0:
+				next_position = move
 
-def draw_streets(dt):	
-	for start in horiz_roads:
-		pyglet.graphics.draw(2, pyglet.gl.GL_LINES, ('v2i', (0, start, grid_size, start)))
-		
-	for start in vert_roads:
-		pyglet.graphics.draw(2, pyglet.gl.GL_LINES, ('v2i', (start, 0, start, grid_size)))
+		# if there are no possible positions given the current velocity choose a random 
+		# next position from the possible positions. (make a turn)
+		if not next_position and possible_next_positions:
+			next_position = random.choice(possible_next_positions)
 
-	for intersection in road_graph.nodes():
-		pyglet.graphics.draw(4, pyglet.gl.GL_QUADS, ('v2i', (
-			intersection[0] + 4, intersection[1] + 4,
-			intersection[0] + 4, intersection[1] - 4,
-			intersection[0] - 4, intersection[1] + 4,
-			intersection[0] - 4, intersection[1] - 4,
-			)),('c3B', (255, 0, 0, 255, 0, 0, 255, 0, 0, 255, 0, 0)))
+		# if there are no possible positions at all, I guess we're off road, do nothing.
+		if not possible_next_positions:
+			print("no locations to move to!")
+			return
 
+		# TODO: move based on velocity magnitude
 
-# mp.set_start_method('fork')
-# mp.Queue() # presumably a thread safe queue
-# mp.Process(target = pyglet.app.run)
+		x_diff = next_position[0] - self.pos[0]
+		y_diff = next_position[1] - self.pos[1]
 
-# pyglet.clock.schedule_interval(draw_streets, .1)
+		# the new velocity for either direction is either 0, or the curent velocity, but going in the direction
+		# which the car has turned.
+		new_vx = x_diff and self.velocity[0] * x_diff / abs(x_diff)
+		new_vy = y_diff and self.velocity[1] * y_diff / abs(y_diff)
 
-pyglet.clock.schedule_once(draw_streets, .1)
+		print("next valid pos is: " + str(next_position))
+		print("current is: " + str(self.pos))
 
-pyglet.app.run()
+		self.pos = next_position
+		self.actual_car_locations[self.id] = self.pos
+
+road_map = Roadmap(road_graph, horiz_roads, vert_roads)
+
+start = random.choice(road_graph.nodes())
+
+actual_car_locations = {}
+
+car = Car(1, road_map, actual_car_locations, start, (1,0))
+
+cars = [car]
+
+server = NavigationServer(actual_car_locations, 8000).start()
+
+while True:
+	time.sleep(.5)
+	for car in cars:
+		print("dirving cars")
+		car.drive()
