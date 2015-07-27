@@ -12,11 +12,12 @@ vert_roads = set()
 horiz_roads = set()
 road_graph = nx.Graph()
 
+# generate a bunch of roads, but not on the boundary of the map
 for i in range(0, number_of_streets):
 	if (i % 2 == 0):
-		vert_roads.add(random.randrange(grid_size))
+		vert_roads.add(random.randrange(1, grid_size - 1))
 	else:
-		horiz_roads.add(random.randrange(grid_size))
+		horiz_roads.add(random.randrange(1, grid_size - 1))
 
 for start_x in vert_roads:
 	for start_y in horiz_roads:
@@ -72,25 +73,114 @@ for y in horiz_list:
 				road_graph.add_edge((x, y), (vert_list[i + 1], y), weight = distance, distance = distance)
 
 class Roadmap: 
-	def __init__(self, horizontal_roads, vertical_roads, road_graph): 
-		self.graph = road_graph
-		self.horiz_roads = horizontal_roads
-		self.vert_roads = vertical_roads
+	def __init__(self, road_graph): 
+		self.graph = road_graph		
+		self.horiz_roads = set()
+		self.vert_roads = set()
+		for node in self.graph.nodes():
+			self.vert_roads.add(node[0])
+			self.horiz_roads.add(node[1])
+
+	def navigate(self, cur_pos, cur_vel, dest_pos):
+		if (not road_graph.has_node(dest_pos)):
+			print("DESTINATION NOT ON MAP: " + str(road_graph.nodes()))
+			return
+		
+		cur_x = cur_pos[0]
+		cur_y = cur_pos[1]
+		vx = cur_vel[0]
+		vy = cur_vel[1]
+
+		# here we assume that we only have horizontal and vertical roads,
+		# so either vx or vy must be 0. If this changes, then this will have to 
+		# be rewritten
+
+		moving_left = cur_vel[0] > 0
+		moving_right = cur_vel[0] < 0
+		moving_up = cur_vel[1] > 0
+		moving_down = cur_vel[1] < 0
+
+		next_node = False
+
+		for edge in road_graph.edges():
+			x1 = edge[0][0]
+			x2 = edge[1][0]
+			y1 = edge[0][1]
+			y2 = edge[1][1]					
+
+			xs = [x1, x2]
+			xs.sort()
+
+			ys = [y1, y2]
+			ys.sort()
+
+			vertical_edge = xs[0] == xs[1]
+			cur_x_on_edge = xs[0] < cur_x < xs[1]
+
+
+			horizontal_edge = ys[0] == ys[1]
+			cur_y_on_edge = ys[0] < cur_y < ys[1]
+
+			if horizontal_edge and cur_x_on_edge:
+				if vx >= 0:
+					next_node ==  (xs[1], ys[0])
+				else:
+					next_node ==  (xs[0], ys[0])
+
+			if vertical_edge and cur_y_on_edge:
+				if vy >= 0:
+					next_node ==  (xs[0], ys[1])
+				else:
+					next_node ==  (xs[0], ys[0])
+
+
+		if next_node == dest_pos:
+			print("no navigation instructions, becauase we are on track to arrive without further turns")
+			return
+
+		if not next_node:
+			print("we can't navigate for some reason!")
+			return 
+			# raise ValueError("Navigation failed.")
+
+		path = nx.shortest_path(road_graph, next_node, dest_pos)
+
+		# now build a list of turns. Each turn is represented as a pair: (intersection, next point to move to).
+		# example: ((10,20), (10, 21)) indicates that when the car reachs the intersection at 10, 20 it should move 
+		# in the direction of 10,21.
+		turns = []
+		for i, node in enumerate(path):			
+			on_last_node = i + 1 >= path.length
+			if not on_last_node:
+				next_node = path[i+1]
+
+				x1 = node[0]
+				x2 = next_node[0]
+
+				y1 = node[1]
+				y2 = next_node[1]
+
+				vertical_edge = x1 == x2
+				horizontal_edge = y1 == y2
+				
+				if vertical_edge:
+					direction = (x1 - x2) / abs(x1 - x2)
+					turns.append({node: (x1 + direction, y1)})
+				else:
+					direction = (y1 - y2) / abs(y1 - y2)
+					turns.append({node: (x1, y1 + direction)})
+
+		return turns				
+
+
 
 	def get_possible_next_locations(self, pos):
 		x = pos[0]
 		y = pos[1]
 
-		on_vertical_road = False
-		on_horizontal_road = False
-
-		for road in self.vert_roads:
-			on_vertical_road = x == road 
-
-		for road in self.horiz_roads:
-			on_horizontal_road = y == road
-
-
+		on_vertical_road = set([x]).issubset(self.vert_roads)
+		on_horizontal_road = set([y]).issubset(self.horiz_roads)			
+				
 		posssible_locations = []
 
 		if on_vertical_road and on_horizontal_road:
@@ -98,22 +188,39 @@ class Roadmap:
 			posssible_locations = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
 		elif on_vertical_road:					
 			posssible_locations = [(x, y - 1), (x, y + 1)]
-		else:						
+		elif on_horizontal_road:						
 			posssible_locations = [(x - 1, y), (x + 1, y)]
+		else:
+			print("NOT ON A VALID ROAD")
 
 		# don't return a next location that is off the map
-		return [loc for loc in posssible_locations if loc[0] >= 0 and loc[1] >= 0] 
+		return [loc for loc in posssible_locations if loc[0] >= 0 and loc[1] >= 0 and loc[0] <= grid_size and loc[1] <= grid_size] 
 
 class Car():
-	def __init__(self, car_id, roadmap, actual_car_locations, starting_pos, starting_velocity): 
-		self.navigation_client = NavigationClient(1060)
+	def __init__(self, car_id, roadmap, dest, starting_pos, starting_velocity): 
+		self.navigation_client = NavigationClient(8000)
 		self.pos = starting_pos
 		self.velocity = starting_velocity
 		self.roadmap = roadmap
 		self.id = car_id
 		self.actual_car_locations = actual_car_locations
+		self.dest = dest
+
+		# this will be populated by the __get_navigation method when it is called
+		self.navigation_turns = []
+
+	# make a request to the navigation server to get a list of directions
+	def __update_navigation(self):		
+		self.turns = self.navigation_client.navigate(self.id, self.pos, self.velocity, self.dest)
+
 
 	def drive(self):
+		self.__update_navigation()
+
+		if self.pos == dest:
+			print("ARRIVED AT DESTINATION!")
+			return 
+
 		possible_next_positions = self.roadmap.get_possible_next_locations(self.pos)
 
 		# calcuate the next valid position for the car to go
@@ -143,30 +250,38 @@ class Car():
 		x_diff = next_position[0] - self.pos[0]
 		y_diff = next_position[1] - self.pos[1]
 
-		# the new velocity for either direction is either 0, or the curent velocity, but going in the direction
-		# which the car has turned.
-		new_vx = x_diff and self.velocity[0] * x_diff / abs(x_diff)
-		new_vy = y_diff and self.velocity[1] * y_diff / abs(y_diff)
+		# if no turn has been made, then maintain the current velocity, otherwise the velocity for the direction
+		# of the turn becomes +-1
+		vx = self.velocity[0]
+		vy = self.velocity[1]
+
+		new_vx = (not x_diff and vx) or (x_diff and x_diff / abs(x_diff))
+		new_vy = (not y_diff and vy) or (y_diff and y_diff / abs(y_diff))
 
 		print("next valid pos is: " + str(next_position))
 		print("current is: " + str(self.pos))
 
-		self.pos = next_position
-		self.actual_car_locations[self.id] = self.pos
+		self.pos = next_position		
+		self.velocity = (new_vx, new_vy)
+		print("velocity is now: " + str(self.velocity))
 
-road_map = Roadmap(road_graph, horiz_roads, vert_roads)
+road_map = Roadmap(road_graph)
 
-start = random.choice(road_graph.nodes())
+nodes = road_graph.nodes()
+start = random.choice(nodes)
+nodes.remove(start)
+start = (start[0], 0)
+dest = random.choice(nodes)
 
 actual_car_locations = {}
 
-car = Car(1, road_map, actual_car_locations, start, (1,0))
+car = Car(1, road_map, dest, start, (1,0))
 
 cars = [car]
 
-server = NavigationServer(actual_car_locations, road_graph, 8000).start()
+server = NavigationServer(cars, road_map, 8000).start()
 
 while True:
-	time.sleep(.5)
-	for car in cars:		
+	time.sleep(.1)
+	for car in cars:
 		car.drive()
