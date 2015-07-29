@@ -2,6 +2,7 @@ import multiprocessing as mp
 import random
 import networkx as nx
 import time
+import pdb
 from navigation_server import *
 
 grid_size = 500
@@ -90,16 +91,7 @@ class Roadmap:
 		cur_y = cur_pos[1]
 		vx = cur_vel[0]
 		vy = cur_vel[1]
-
-		# here we assume that we only have horizontal and vertical roads,
-		# so either vx or vy must be 0. If this changes, then this will have to 
-		# be rewritten
-
-		moving_left = cur_vel[0] > 0
-		moving_right = cur_vel[0] < 0
-		moving_up = cur_vel[1] > 0
-		moving_down = cur_vel[1] < 0
-
+		
 		next_node = False
 
 		for edge in road_graph.edges():
@@ -114,24 +106,30 @@ class Roadmap:
 			ys = [y1, y2]
 			ys.sort()
 
+			# with this logic its possible that a car can be on multiple edges,
+			# if it is currently on a node. If this is the case we'll just treat it
+			# as on the first edge we find, and things should work out.
 			vertical_edge = xs[0] == xs[1]
-			cur_x_on_edge = xs[0] < cur_x < xs[1]
-
+			cur_x_on_edge = xs[0] <= cur_x <= xs[1] 
 
 			horizontal_edge = ys[0] == ys[1]
-			cur_y_on_edge = ys[0] < cur_y < ys[1]
+			cur_y_on_edge = ys[0] <= cur_y <= ys[1] 
 
-			if horizontal_edge and cur_x_on_edge:
+			if horizontal_edge and cur_x_on_edge and vx:								
 				if vx >= 0:
-					next_node ==  (xs[1], ys[0])
+					next_node = (xs[1], ys[0])
+					break
 				else:
-					next_node ==  (xs[0], ys[0])
+					next_node = (xs[0], ys[0])
+					break
 
-			if vertical_edge and cur_y_on_edge:
+			elif vertical_edge and cur_y_on_edge and vy:				
 				if vy >= 0:
-					next_node ==  (xs[0], ys[1])
+					next_node = (xs[0], ys[1])
+					break
 				else:
-					next_node ==  (xs[0], ys[0])
+					next_node = (xs[0], ys[0])
+					break
 
 
 		if next_node == dest_pos:
@@ -150,7 +148,7 @@ class Roadmap:
 		# in the direction of 10,21.
 		turns = []
 		for i, node in enumerate(path):			
-			on_last_node = i + 1 >= path.length
+			on_last_node = i + 1 >= len(path)
 			if not on_last_node:
 				next_node = path[i+1]
 
@@ -163,12 +161,12 @@ class Roadmap:
 				vertical_edge = x1 == x2
 				horizontal_edge = y1 == y2
 				
-				if vertical_edge:
+				if horizontal_edge:
 					direction = (x1 - x2) / abs(x1 - x2)
-					turns.append({node: (x1 + direction, y1)})
+					turns.append((node, (x1 + direction, y1)))
 				else:
 					direction = (y1 - y2) / abs(y1 - y2)
-					turns.append({node: (x1, y1 + direction)})
+					turns.append((node,(x1, y1 + direction)))
 
 		return turns				
 

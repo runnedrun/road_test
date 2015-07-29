@@ -31,7 +31,7 @@ class NavigationServer():
 					print("position " + str(position))
 					print("dest " + str(dest))
 					print("vel " + str(vel))
-					print("sending back turns" + str(turns))
+					print("sending back turns" + str(turns))					
 
 					body = {"turns": turns}
 					self.render_response(body)
@@ -60,11 +60,12 @@ class NavigationServer():
 					super().do_GET()
 
 			def render_response(self, resp_obj):
-				body_str = json.dumps(resp_obj)					
-				self.send_response(200)	
+				body_str = json.dumps(resp_obj)
+				self.send_response(200)
+				self.send_header("Content-type", "text/html")
+				self.end_headers()
 				self.wfile.write(bytes(body_str, "UTF-8"))
-			
-
+				
 		self.server = http.server.HTTPServer(("localhost", port), NavigationRequestHandler)
 		self.cars = cars
 		self.perceived_car_locations = perceived_car_locations
@@ -84,8 +85,9 @@ class NavigationClient():
 		body_str = json.dumps(body)
 		# try: 
 		resp = urllib.request.urlopen("http://localhost:" + str(self.port) + " /navigate", data = bytes(body_str,"UTF-8"))
-		print("got resp" + str(resp))			
-		resp_dict = json.loads(resp)
+		str_resp = resp.read().decode("utf-8")
+		print("got resp" + str_resp)			
+		resp_dict = json.loads(str_resp)
 		return resp_dict["turns"]
 
 		# except:
