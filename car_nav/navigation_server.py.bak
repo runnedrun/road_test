@@ -1,0 +1,49 @@
+import threading
+import urllib 
+import sys
+import json
+import http.server
+
+class NavigationServer():
+	# car locations is a map from car id to lat lon coordinates.
+	def __init__(self, car_locations, port = 1060):
+		# The navigation handler is defined within this init so that it has access to the map of car locations
+		class NavigationRequestHandler(http.server.SimpleHTTPRequestHandler):
+			def do_POST(self):
+				if (self.path == "/update"):
+					print "updating"
+					content_len = int(self.headers.getheader('content-length', 0))
+					body = json.loads(self.rfile.read(content_len))
+					car_id = body[0]["id"]
+					location = body[1]["location"]
+					car_locations[car_id] = location
+					print "id " + car_id
+					print "location" + location
+
+					self.send_response(200)
+				else:
+					self.send_response(404)
+
+		self.server = http.server.BaseHTTPServer.HTTPServer(("localhost", port), NavigationRequestHandler)
+		self.car_locations = car_locations
+
+
+	def start(self):
+		threading.Thread(target = self.server.serve_forever).start()
+		
+
+
+class NavigationClient():
+	def __init__(self, port):
+		self.port = port
+
+	def update_pos(self):
+		body = [{"id": 1234, "position": [50, 50]}]
+		body_str = json.dumps(body)
+		try: urllib.urlopen("http://localhost:" + str(self.port) + " /update", data = body_str)
+		except:
+			e = sys.exc_info()[0]
+			print e			
+	
+# server = NavigationServer({}, 1060)
+# client = NavigationClient(1060)
